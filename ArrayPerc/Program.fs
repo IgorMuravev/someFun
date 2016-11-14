@@ -1,10 +1,12 @@
 ﻿open System
 
-let N = 3
-let eps = 0.01
+let countEp = 10.0
+let N = 2
+let mainEps = 0.4
+let mutable eps = 0.4
 let t = 100.0
-let minValue = -100.0
-let maxValue = 100.0
+let minValue = 0.0
+let maxValue = 1.0
 let rnd = new Random()
 
 //#region teachPairInit
@@ -41,14 +43,17 @@ let genTeachPairs(count) =
 let initNeuron() = 
     [
         for i in 1..N do
-            yield rnd.NextDouble() - 1.0
+            yield 0.0
     ]
 
 let neuronResult(perc, input) =
     List.zip perc input |> List.fold (fun acc (fst, snd) -> acc + fst * snd) 0.0
 
 let activateNeuron(x:float) =
-    1.0 / (1.0 + exp(-t * x))
+   if x > 0.0 then 
+    1.0
+   else
+    0.0
 
 let getNetwork =
     [
@@ -66,27 +71,28 @@ let queryNetwork(network, input) =
     loop(network, input, [])
 
 let teachNet(network, teachPair) =
-    let answer = queryNetwork(network, fst teachPair)
-
-    let rec loop(neuron, correct, answer, input, accum) =
+    
+    let rec recalcNeuron(neuron, delta, input ,accum) =
         match neuron with
+            | [] -> accum
+            | neuron::net ->
+                let x, ainput = List.head(input), List.tail(input)
+                let newWeight = neuron + delta * x
+                recalcNeuron(net, delta , ainput ,accum @ [newWeight])
+
+    let rec loop(network, correct, answer, input, accum) =
+        match network with
             | [] -> accum
             | _ ->
                   let d, acorrect = List.head(correct), List.tail(correct)
-                  let y ,aanswer = List.head(answer), List.tail(answer)
-                  let x , ainput = List.head(input), List.tail(input)
-                  let w , aneuron = List.head(neuron), List.tail(neuron)
-                  let delta = eps * (d - y) * x
-                  loop(aneuron, acorrect, aanswer,ainput, accum @ [w + delta])
-                       
-    let rec recalNetwork(network, correct, answer, input, newNet) =
-        match network with
-            | [] -> newNet
-            | neuron::net ->
-                let newWeight = loop(neuron , correct, answer, input, [])
-                recalNetwork(net, correct, answer, input, newNet @ [newWeight])
+                  let y, aanswer = List.head(answer), List.tail(answer)
+                  let neuron, aneuron = List.head(network), List.tail(network)
+                  let delta = eps * (d - y)
+                  let newNeuron = recalcNeuron(neuron, delta, input, [])
+                  loop(aneuron, acorrect, aanswer, input, accum @ [newNeuron])
 
-    recalNetwork(network,snd(teachPair), answer, fst(teachPair),[])
+    let answer = queryNetwork(network, fst teachPair)
+    loop(network, snd teachPair, answer, fst teachPair, [])                        
  
  
 let teachByAll(network, pairs) =
@@ -99,18 +105,37 @@ let teachByAll(network, pairs) =
     teach(network, pairs)
                   
 
+
+let teachByEp(net) =
+    let teachPairs = genTeachPairs(100000)      
+      
+    let rec epoTeach(net, ep) =
+        eps <- mainEps / ep
+        let teachedNetwork = teachByAll(net, teachPairs)
+        match ep with
+            | _  when ep > countEp -> teachedNetwork
+            | _ -> epoTeach(teachedNetwork, ep + 1.0)
+
+    epoTeach(net, 1.0)
+
           
 //end region
 
 [<EntryPoint>]
 let main argv = 
-    let teachPairs = genTeachPairs(100)
+  
     let network = getNetwork
     printfn "%A" network
 
-    let teachedNetwork = teachByAll(network, teachPairs)
+    let teachedNetwork = teachByEp(getNetwork)
     printfn "%A" teachedNetwork
 
-    let answer = queryNetwork(teachedNetwork, [-1.0 ; 2.3 ; 1.3])
+    let answer = queryNetwork(teachedNetwork, [0.5 ; 0.3])
+    printfn "%A" answer
+
+    let answer = queryNetwork(teachedNetwork, [0.2 ; 0.3] )
+    printfn "%A" answer
+
+    let answer = queryNetwork(teachedNetwork, [0.1 ; 0.05])
     printfn "%A" answer
     0 
